@@ -1,0 +1,17 @@
+--cpu Cortex-M3
+".\objects\lcd.o"
+".\objects\thread_rtc.o"
+".\objects\main.o"
+"C:\Users\nfvil\AppData\Local\Arm\Packs\ARM\CMSIS\5.5.1\CMSIS\RTOS\RTX\LIB\ARM\RTX_CM3.lib"
+".\objects\rtx_conf_cm.o"
+".\objects\spi_lpc17xx.o"
+".\objects\ssp_lpc17xx.o"
+".\objects\gpdma_lpc17xx.o"
+".\objects\gpio_lpc17xx.o"
+".\objects\pin_lpc17xx.o"
+".\objects\startup_lpc17xx.o"
+".\objects\system_lpc17xx.o"
+--strict --scatter ".\Objects\P2-RTC.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list ".\Listings\P2-RTC.map" -o .\Objects\P2-RTC.axf
