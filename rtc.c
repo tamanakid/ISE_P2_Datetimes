@@ -1,88 +1,83 @@
-#include <string.h>
-#include <stdio.h>
+#include <math.h>
 
-#include "GPIO_LPC17xx.h"
-#include "PIN_LPC17xx.h"
 #include "LPC17xx.h"
 
-#include "lcd.h"
-
-
-#define PORT_LED 1
-#define PIN_LED0 18
-#define PIN_LED1 20
-#define PIN_LED2 21
-#define PIN_LED3 23
-#define CLEAR_STRING "                    "
-
-#define RTC_ILR_RTCCIF    0
-#define RTC_CCR_CLKEN     0
-#define RTC_CIIR_IMSEC    0
-#define RTC_CIIR_IMMIN    1
+#include "rtc.h"
 
 
 
-extern int init_thread_rtc (void)
+/** GLOBAL VARIABLES DEFINITION */
 
-char lcd_text[2][20];
-
-void lcd_initialize(void) {
-	init_lcd();
-  reset_lcd();
-	// sprintf (lcd_text[0], CLEAR_STRING);
-  sprintf (lcd_text[1], CLEAR_STRING);
-	
-	snprintf(lcd_text[0], sizeof(lcd_text[0]), "%d", 56);
-	escribe_frase_L1(lcd_text[0], sizeof(lcd_text[0]));
-	
-	copy_to_lcd();
-}
-
-void lcd_write() {
-	snprintf(lcd_text[0], sizeof(lcd_text[0]), "%d", 813573);
-	escribe_frase_L1(lcd_text[0], sizeof(lcd_text[0]));
-	
-	copy_to_lcd();
-}
+int rtc_seconds, rtc_minutes, rtc_hours,
+	rtc_days, rtc_months, rtc_years;
 
 
-int main () {
-  lcd_initialize();
+
+/** FUNCTION DEFINITION */
+
+void rtc_initialize(uint32_t rtc_ciir_config) {
+	// RTC Reset, Calibration and Enabling
+  LPC_RTC->CCR = ((1 << RTC_CCR_CCALEN) | (1 << RTC_CCR_CTCRST));
+	LPC_RTC->CALIBRATION = 0x00;
+	LPC_RTC->CCR = (1 << RTC_CCR_CLKEN);
   
-  GPIO_SetDir(PORT_LED, PIN_LED0, GPIO_DIR_OUTPUT);
-  GPIO_SetDir(PORT_LED, PIN_LED1, GPIO_DIR_OUTPUT);
-  GPIO_SetDir(PORT_LED, PIN_LED2, GPIO_DIR_OUTPUT);
-  GPIO_SetDir(PORT_LED, PIN_LED3, GPIO_DIR_OUTPUT);
+  // RTC Interrupt Configuration
+	LPC_RTC->CIIR = rtc_ciir_config;
   
-  GPIO_PinWrite(PORT_LED, PIN_LED3, 0);
-  GPIO_PinWrite(PORT_LED, PIN_LED2, 1);
-  GPIO_PinWrite(PORT_LED, PIN_LED1, 0);
-  GPIO_PinWrite(PORT_LED, PIN_LED0, 1);
-  
-  // Enables time counters
-  LPC_RTC->CCR |= (1 << RTC_CCR_CLKEN);
-  
-  // Generates interrupt every minute 
-  LPC_RTC->CIIR |= (1 << RTC_CIIR_IMSEC);
-  LPC_RTC->CIIR |= (1 << RTC_CIIR_IMMIN);
-  LPC_RTC->ALMIN = 1; // Necessary?
-  
-  
-  // Enable Interrupts for RTC
+  // RTC Interrupts Enabling in NVIC
   NVIC_EnableIRQ(RTC_IRQn);
 }
 
 
-void RTC_IRQHandler () {
-  int seconds = (int) LPC_RTC->SEC;
-  
-  // snprintf(lcd_text[0], sizeof(lcd_text[0]), "%d", seconds);
-	// escribe_frase_L1(lcd_text[0], sizeof(lcd_text[0]));
-  
-  // Clear ILR "Counter Increment Interrupt" bit
-  LPC_RTC->ILR |= (1 << RTC_ILR_RTCCIF);
-	lcd_write();
+void rtc_get_full_time (void) {
+	// Read CTIME registers
+	uint32_t ctime0 = LPC_RTC->CTIME0;
+	uint32_t ctime1 = LPC_RTC->CTIME1;
 	
-  // copy_to_lcd();
+	// Set global time variables
+	rtc_seconds = rtc_read_bits(0, 5, ctime0);
+	rtc_minutes = rtc_read_bits(8, 13, ctime0);
+	rtc_hours = rtc_read_bits(16, 20, ctime0);
+	rtc_days = rtc_read_bits(0, 4, ctime1);
+	rtc_months = rtc_read_bits(8, 11, ctime1);
+	rtc_years = rtc_read_bits(16, 27, ctime1);
 }
 
+
+void rtc_set_full_time (
+	int seconds, int minutes, int hours,
+	int days, int months, int years
+) {
+	// Set RTC value registers
+	LPC_RTC->SEC = seconds;
+	LPC_RTC->MIN = minutes;
+	LPC_RTC->HOUR = hours;
+	LPC_RTC->DOM = days;
+	LPC_RTC->MONTH = months;
+	LPC_RTC->YEAR = years;
+}
+
+
+void rtc_reset_full_time(void) {
+	rtc_set_full_time(
+		RESET_DATE_SEC, RESET_DATE_MIN, RESET_DATE_HOUR,
+		RESET_DATE_DOM, RESET_DATE_MONTH, RESET_DATE_YEAR
+	);
+}
+
+
+int rtc_read_bits (int first_bit, int last_bit, uint32_t reg) {
+	int and_operator = pow((double) 2, last_bit - first_bit + 1) - 1;
+	
+	uint32_t value = (reg >> first_bit) & and_operator;
+	return (int) value;
+}
+
+
+void RTC_IRQHandler () {
+  // Clear ILR "Counter Increment Interrupt" bit
+  LPC_RTC->ILR |= (1 << RTC_ILR_RTCCIF);
+	
+	// Delegates execution to program implementation
+	rtc_handle_interrupt();
+}

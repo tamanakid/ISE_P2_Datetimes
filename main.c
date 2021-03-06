@@ -11,37 +11,24 @@
 #include "LPC17xx.h"
 
 #include "main.h"
+#include "rtc.h"
 #include "lcd.h"
 
 #include <string.h>
 #include <stdio.h>
 
 
-#define CLEAR_STRING "                    "
 
+osThreadId id_thread_lcd, id_thread_led3;
 
-#define RTC_ILR_RTCCIF    0
+extern int init_threads_rtc (void);
 
-#define RTC_CCR_CLKEN     0
-#define RTC_CCR_CTCRST    4
-#define RTC_CCR_CCALEN    4
-
-//#define RTC_CIIR_CONFIG   0x000000CF
-#define RTC_CIIR_CONFIG   	0x00000002
-
-
-
-osThreadId id_thread_rtc, id_thread_led3;
-
-extern void reset_rtc_date (void);
-
-extern int init_threads (void);
-extern osThreadId id_thread_rtc;
 
 char lcd_text[2][20];
 
-
 void lcd_initialize(void);
+
+
 
 void lcd_initialize(void) {
 	init_lcd();
@@ -55,10 +42,8 @@ void lcd_initialize(void) {
 }
 
 
-void init_peripherals () {
-  lcd_initialize();
-  
-  GPIO_SetDir(PORT_LED, PIN_LED0, GPIO_DIR_OUTPUT);
+void leds_initialize(void) {
+	GPIO_SetDir(PORT_LED, PIN_LED0, GPIO_DIR_OUTPUT);
   GPIO_SetDir(PORT_LED, PIN_LED1, GPIO_DIR_OUTPUT);
   GPIO_SetDir(PORT_LED, PIN_LED2, GPIO_DIR_OUTPUT);
   GPIO_SetDir(PORT_LED, PIN_LED3, GPIO_DIR_OUTPUT);
@@ -67,22 +52,10 @@ void init_peripherals () {
   GPIO_PinWrite(PORT_LED, PIN_LED2, 0);
   GPIO_PinWrite(PORT_LED, PIN_LED1, 0);
   GPIO_PinWrite(PORT_LED, PIN_LED0, 0);
-  
-	/** RTC */
-	
-  // RTC Reset, Calibration and Enabling
-  LPC_RTC->CCR = ((1 << RTC_CCR_CCALEN) | (1 << RTC_CCR_CTCRST));
-	LPC_RTC->CALIBRATION = 0x00;
-	LPC_RTC->CCR = (1 << RTC_CCR_CLKEN);
-  
-  // RTC Interrupt Configuration
-	LPC_RTC->CIIR = RTC_CIIR_CONFIG;
-  
-  // RTC Interrupts Enabling in NVIC
-  NVIC_EnableIRQ(RTC_IRQn);
-	
-	
-	/** JOYSTICKS */
+}
+
+
+void joystick_initialize(void) {
 	PIN_Configure(PORT_PINS, PIN_JST_C, PIN_FUNC_0, PIN_PINMODE_PULLDOWN, PIN_PINMODE_NORMAL);
 
 	LPC_GPIOINT->IO0IntEnR |= (1UL << PIN_JST_C);
@@ -91,13 +64,23 @@ void init_peripherals () {
 }
 
 
-void RTC_IRQHandler () {
-  // Clear ILR "Counter Increment Interrupt" bit
-  LPC_RTC->ILR |= (1 << RTC_ILR_RTCCIF);
+
+void init_peripherals () {
+  lcd_initialize();
+  leds_initialize();
+	joystick_initialize();
 	
-	osSignalSet(id_thread_led3, 0x01);
+	rtc_initialize(RTC_CIIR_CONFIG);
 }
 
+
+
+/**
+ * Callback from the RTC Interrupt Service Routine
+ */
+void rtc_handle_interrupt() {
+	osSignalSet(id_thread_led3, 0x01);
+}
 
 
 /**
@@ -106,7 +89,7 @@ void RTC_IRQHandler () {
 void EINT3_IRQHandler() {
 	
 	if (LPC_GPIOINT->IO0IntStatR & (1 << PIN_JST_C)) {
-		reset_rtc_date();
+		rtc_reset_full_time();
   }
 	LPC_GPIOINT->IO0IntClr |= (1 << PIN_JST_C);
 }
@@ -122,7 +105,7 @@ int main (void) {
 	
 	init_peripherals();
 	
-	init_threads();
+	init_threads_rtc();
 
   osKernelStart();
 }
